@@ -1,0 +1,15 @@
+  - name: "Platform_1"
+    operate_type: "light"
+    passenger_path: "./Resource/all_day_passengers.npy"
+    driver_path: "./Resource/all_day_drivers.npy"
+    base_fare: 11.4
+    unit_time_fare: 0.35
+    unit_mileage_fare: 1.95
+    commission_ratio: 0.2
+    max_match_radius: 3000
+    max_pick_times: 10
+    dispatch_algorithm: "bipartite_matching"
+    reposition_algorithm: "algorithm2"
+    nearest_limitation: 100
+    simulation_type: "type1"
+    dynamic_impedance: true
