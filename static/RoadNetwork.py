@@ -8,6 +8,7 @@ import osmnx as ox
 import numpy as np
 import pandas as pd
 import geopandas as gpd
+from shapely.geometry import Polygon
 
 import warnings
 
@@ -395,7 +396,8 @@ class RoadChangedRoadNetwork(RoadNetwork):
         self.can_drive = can_drive
         self.can_walk = can_walk
 
-        self.changed_road_list, self.changed_edge_list, self.changed_node_list = self.create_changed_road()
+        self.changed_road_list, self.changed_edge_list, self.changed_node_list, self.control_route =\
+            self.create_changed_road()
 
         self.current_road = None
         self.current_nodes = None
@@ -409,18 +411,37 @@ class RoadChangedRoadNetwork(RoadNetwork):
 
     def create_changed_road(self):
         """
-        Create a list of updated road networks based on the locations and times of the changes.
+        Generate lists of updated road networks based on the locations and times of changes.
+
+        For each change location, it creates a geospatial dataframe representing the change zone, identifies the
+        intersection of the original road network and the change zone, removes these intersections from the original
+        road network to form an updated road network, and adds the updated road network, edges, nodes, and the indices
+        of the control zone to respective lists.
+
+        Parameters:
+            where_change (list): A list of change locations, each represented as a list of tuples (longitude, latitude)
+            forming a polygon.
+            when_change (list): A list of times when changes occur. Not used in the current version of this function.
+            gdf_nodes (GeoDataFrame): A geopandas GeoDataFrame representing the nodes of the original road network.
+            gdf_edges (GeoDataFrame): A geopandas GeoDataFrame representing the edges of the original road network.
 
         Returns:
-            Tuple: A tuple containing lists of the changed road networks, edges, and nodes respectively.
+            tuple: A tuple containing four lists:
+                - road_list (list): A list of updated road networks.
+                - edge_list (list): A list of updated edges for each road network.
+                - node_list (list): A list of updated nodes for each road network.
+                - control_route (list): A list of indices for the control zones in each road network.
         """
-        road_list, edge_list, node_list = [], [], []
+        road_list, edge_list, node_list, control_route = [], [], [], []
         for i in range(len(self.where_change)):
-            # 需要更改的是道路编号
             where_change_i, when_change_i = self.where_change[i], self.when_change[i]
+            change_zone_polygon = gpd.GeoDataFrame(
+                range(len(where_change_i)), geometry=[Polygon(zone) for zone in where_change_i], crs="EPSG:4326")
             origin_road_node, origin_road_edge = self.gdf_nodes, self.gdf_edges
 
-            changed_road_edge = origin_road_edge[~origin_road_edge.index.isin(where_change_i)]
+            control_area = gpd.sjoin(origin_road_edge, change_zone_polygon, op="intersects")
+            changed_road_edge = origin_road_edge.drop(control_area.index)
+            control_area_index = control_area['index'].tolist()
             changed_road_node = list(set(changed_road_edge['u'].tolist() + changed_road_edge['v'].tolist()))
             changed_road_node = origin_road_node[origin_road_node.index.isin(changed_road_node)]
             changed_road = pandana.Network(
@@ -430,7 +451,8 @@ class RoadChangedRoadNetwork(RoadNetwork):
             road_list.append(changed_road)
             edge_list.append(changed_road_edge)
             node_list.append(changed_road_node)
-        return road_list, edge_list, node_list
+            control_route.append(control_area_index)
+        return road_list, edge_list, node_list, control_route
 
     def update_current_road_info(self, env_time):
         """
@@ -441,7 +463,6 @@ class RoadChangedRoadNetwork(RoadNetwork):
             env_time (int): The current time in the environment.
         """
         road_index = self.find_interval(env_time)
-        print(env_time, road_index)
         if road_index != -1:
             self.current_road = self.changed_road_list[road_index]
             self.current_edges = self.changed_edge_list[road_index]
@@ -450,7 +471,7 @@ class RoadChangedRoadNetwork(RoadNetwork):
             self.current_can_walk = self.can_walk[road_index]
             self.current_can_drive = self.can_drive[road_index]
 
-            self.now_change_area = self.where_change[road_index]
+            self.now_change_area = self.control_route[road_index]  # 更改成路径的index作差
             self.now_change_time_range = np.arange(self.when_change[road_index][0], self.when_change[road_index][1])
         else:
             self.current_road = self.pandana_net
@@ -508,7 +529,7 @@ class RoadChangedRoadNetwork(RoadNetwork):
             route_time = np.arange(env_time, env_time + route.shape[0])
             route_changed = []
             for index in range(len(self.where_change)):
-                now_where_changed = self.where_change[index]
+                now_where_changed = self.control_route[index]
                 now_when_changed = self.when_change[index]
                 in_control_area = np.in1d(route, now_where_changed)
                 in_control_time = np.in1d(route_time, now_when_changed)
