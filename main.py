@@ -13,8 +13,12 @@ def begin_simulation(**kwargs):
     return simulation
 
 
-def replay_simulation():
-    pass
+def replay_simulation(config_path):
+    sp = SimulationReplay(config_path)
+    sp.load_logger()
+
+    sp.results_analysis()
+    sp.visualization()
 
 
 if __name__ == '__main__':
@@ -30,3 +34,12 @@ if __name__ == '__main__':
         when_change = []  # 列表，存储道路管控的时间范围
         can_drive = [False]
         can_walk = [False]
+        simulation = begin_simulation(
+            name, city, platform_path, time_limit, drive_speed, walk_speed, road_change, where_change, when_change,
+            can_drive, can_walk
+        )
+    else:
+        simulation = begin_simulation(
+            name, city, platform_path, time_limit, drive_speed, walk_speed, road_change
+        )
+
